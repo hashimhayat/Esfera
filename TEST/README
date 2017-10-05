@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------#
+# Multicore Programming (Labs 2 - 4)                                            #
+# httperf Workload Generator                                                    #
+# Copyright (c) 2016 - 2017 Dr. Christopher Mitchell                            #
+#                                                                               #
+# Usage: lab2_workload.py [-n <number of sessions>] [-m <requests per session>] #
+# ------------------------------------------------------------------------------#
+
+This workload generator generates workloads for httperf. Specify the number of
+sessions that you'd like to generate, the number of requests to put into each
+session, and the script will dump the contents of the requests workload to
+stdout. Simply pipe the results into a file ( >somefile.txt ) to store it. You
+can then use it with httperf, a la:
+
+$ httperf --server <hostname/IP> --port <port> --wsesslog=sessions,1,somefile.txt
+
+Note that 'sessions' should actually be a number, for example the same number of
+sessions that you specified for this script.
