@@ -1,12 +1,12 @@
-### <i class="icon-file"></ Esfera - A Realtime 360 Video Delivery Protocol
+### <i class="icon-file">Esfera - A Realtime 360 Video Delivery Protocol
 ----------
 
 Creating an Executable & Testing
-A simple Makefile is created to generate an executable of the Implementation. The executable is called ***lab4***.
+A simple Makefile is created to generate an executable of the Implementation. The executable is called ***esfera***.
 
 In order to test the protocol implementation perform the following steps:
 
- 1. Go to the lab4 directory.
+ 1. Go to the esfera directory.
  2. Use the *make* command to create an exe.
  3. To run the exe, use: *./esfera -n N -p "P" -c C*
     - N: number of threads
