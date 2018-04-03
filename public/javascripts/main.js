@@ -65,10 +65,6 @@ function WRTCConnection(_config) {
         .catch(logError);
     }
 
- //    self.connection.addStream = function(stream) {
- //  		stream.getTracks().forEach(track => self.connection.addTrack(track, stream));
- //  		self.stream = stream;
-	// };
 
 	self.connection.ontrack = function (evt) {
 		console.log(evt.streams);
@@ -105,6 +101,15 @@ function Peer(config) {
 	self.streamAttached = false;
 	self.viewView;
 
+	/*
+		Once the a new peer connects to the server. It has two options depnding on its status:
+		If its a broadcaster:
+			it tells the server that its a broadcaster
+		Else if its not a broadcaster, or is a viewer client
+			it sends a message to the moderator saying that I would like to connect.
+			the moderator is responsible for telling the client who should he connect to.
+	*/
+
 	self.signalingChannel.on('connect', function (socket) {
 	    
 	    self.id = self.signalingChannel.id;
@@ -115,23 +120,35 @@ function Peer(config) {
 			sig = { desc: "broadcaster", from : self.id, to: "server", message: "I am the broadcaster." };
 		} else {
 			// Connection Request to the broadcaster
-			sig = { desc: "forward", forwardType: "request", from : self.id, to : "broadcaster", message: "I would like to connect." };
+			//sig = { desc: "forward", forwardType: "request", from : self.id, to : "broadcaster", message: "I would like to connect." };
+			sig = { desc: "moderator", from : self.id, to : "server", message: "I would like to connect." };
 		}
 		
 		self.signalingChannel.emit('signal', sig);
 	});
 
+	/*
+		The createConnection is responsible for creating a new WebRTC connection with
+		a client who's socket ID is fed to the function. 
+		The broadcaster inits a connection with the new client.
+	*/
+
 	self.createConnection = function(otherID) {
+
 		var config = { id: self.id, other: otherID, signalingChannel: self.signalingChannel }
 		var conn = new WRTCConnection(config);
 		self.connections[otherID] = conn;
 
+		// The addStream function triggers the new WebRTC connection setup between the two clients.
+
 		if (self.broadcaster || self.stream)
-			// self.stream.getTracks().forEach(function(track) {
-			//     console.log(track)
-			//});
 			self.connections[otherID].connection.addStream(self.stream.clone());
 	}
+
+	/*
+		This function is responsible in fetching the user's media and storing the stream locally
+		 (If the user is a broadcaster), otherwise it just displays the stream to the users DOM.
+	*/
 
 	self.createStream = function(height, width, dom_ele) {
 
@@ -168,7 +185,13 @@ function Peer(config) {
 			video.setAttribute('height', self.aspectRatio.height + '');
 			video.setAttribute('width', self.aspectRatio.width + '');
 			var objectURL = window.URL || window.webkitURL;
-		    video.src = objectURL.createObjectURL(self.stream);
+
+		    try {
+			  video.srcObject = self.stream;
+			} catch (error) {
+			  video.src = URL.createObjectURL(mediaSource);
+			}
+
 		    video.play(); 
 		    self.streamAttached = true;
 		}
@@ -229,13 +252,19 @@ function Peer(config) {
 	        		
 	        	case "connected":
 	        		
+	        		// This
 		        	console.log("Connection established with:", self.connections[signal.from].getOther());
 
 		        	if (!self.streaming && self.connections[signal.from].getStream()){
 		        		self.stream = self.connections[signal.from].getStream();
 		        		self.viewStream("videoView");
-						self.signalingChannel.emit('signal', { desc: "broadcaster", from : self.id, to: "server", message: "I am the broadcaster." });
 						self.streaming = true;
+
+						let info_signal = { desc: "information", type: "connected", from : self.id, with: self.connections[signal.from].getOther(), to: "server" }
+						self.signalingChannel.emit('signal', info_signal);
+
+						document.getElementById("myid").innerHTML = self.id;
+						document.getElementById("connectedto").innerHTML = self.connections[signal.from].getOther();
 		        	}
 
 	        		break;	
