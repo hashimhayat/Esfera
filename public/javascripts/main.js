@@ -27,6 +27,7 @@ function WRTCConnection(_config) {
 	self.signalingChannel = _config.signalingChannel;
 	self.dataChannel;
 	self.stream;
+	self.isbackup = false;
 
 	self.config = { "iceServers": [{ "url": "stun:stun.1.google.com:19302" }] }; 
 	self.connection = new RTCPeerConnection(self.config);
@@ -137,9 +138,19 @@ function Peer(config) {
 		self.connections[otherID] = conn;
 
 		// The addStream function triggers the new WebRTC connection setup between the two clients.
-
 		if (self.broadcaster || self.stream)
 			self.connections[otherID].connection.addStream(self.stream.clone());
+	}
+
+	self.createBackupConnection = function(otherID) {
+
+		var config = { id: self.id, other: otherID, signalingChannel: self.signalingChannel }
+		var conn = new WRTCConnection(config);
+		self.connections[otherID] = conn;
+		self.connections[otherID].isbackup = true;
+
+		// The addStream function triggers the new WebRTC connection setup between the two clients.
+		self.connections[otherID].connection.addStream(self.stream.clone());
 	}
 
 	self.parentdied = function(parentID){
@@ -153,7 +164,7 @@ function Peer(config) {
 		        self.viewStream("videoView");
 				self.streaming = true;
 	        	console.log("Stream set to:", conn);
-	        	break;
+	        	return conn;
 	        }
 	    }
 	}
@@ -240,7 +251,7 @@ function Peer(config) {
 	        		console.log(signal.from, "sent a backup request");
 
 	        		// Set up a new WebRTC Backup connection.
-	        		self.createConnection(signal.from);
+	        		self.createBackupConnection(signal.from);
 	        		break;
 
 	        	case "offer":
@@ -291,13 +302,25 @@ function Peer(config) {
 						document.getElementById("connectedto").innerHTML = self.connections[signal.from].getOther();
 		        	}
 
+		        	if (self.connections[signal.from].isBackup()){
+		        		let info_signal = { desc: "information", type: "newbackup", from : self.id, backup: self.connections[signal.from].getOther(), to: "server" }
+						self.signalingChannel.emit('signal', info_signal);
+		        	}
+
 	        		break;	
 
 	        	case "parentdied":
 	        		
 	        		// Signal received when your parent dies.
 	        		console.log(signal.from, " is dead.");
-	        		self.parentdied(signal.from);
+
+	        		// Connect to a new parent
+	        		let newParent = self.parentdied(signal.from);
+
+	        		// Inform the server about the new parent.
+	        		let info_signal = { desc: "information", type: "newparent", from : self.id, parent: newParent, to: "server" }
+					self.signalingChannel.emit('signal', info_signal);
+
 	        		break;
 	        	
 	        	case "childdied":

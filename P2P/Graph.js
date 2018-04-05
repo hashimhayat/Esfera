@@ -9,6 +9,7 @@ class Client {
 		this.children = new Map();
 		this.parent = undefined;
 		this.backups = new Map();
+		this.backupFor = new Map();
 		this.isBroadcaster = false;
 		this.depth = 0;
     }
@@ -50,8 +51,8 @@ class Graph {
 
 	constructor() {
 		this.nodes = new Map();
-		this.broadcaster = undefined;
 		this.connections_available = new Map();		// {socket id: depth}
+		this.broadcaster = undefined;
 		this.max_connections = 3;
 		this.max_backup = 1;
     }
@@ -74,6 +75,14 @@ class Graph {
     	if (this.nodes.has(socket_id))
     		return this.nodes.get(socket_id).socket;
     	console.warn("Error:getClient_sock_at");
+    }
+
+    assign_newParent(socket_id, newParent){
+    	this.getClient_at(socket_id).addParent(newParent);
+    }
+
+    remove_backup(socket_id, newParent){
+    	this.getClient_at(socket_id).backups.delete(newParent);
     }
 
     getClient_at(socket_id){
@@ -102,44 +111,12 @@ class Graph {
     	console.warn("Error:getParent");
     }
 
-    /*
-		Removes a Client when it disconnects.
-    */
+    setBackupFor(me, bfor){
 
-    removeClient_at(socket_id){
-    	
-    	// Remove from availble nodes
-    	this.connections_available.delete(socket_id);
-
-    	// Remove this node as a child of its parent.
-    	// Decrement the availability of its parents, and add them to available.
-
-    	var myParent = this.nodes.get(socket_id).parent;
-    	
-    	if (myParent) {
-    		this.getClient_at(myParent).connections -= 1;
-	    	this.getClient_at(myParent).children.delete(socket_id);
-
-			if (this.getClient_at(myParent).connections < this.max_connections){
-				let d = this.depthOfNode(myParent);
-				this.addAvailableConnections(myParent, d);
-			}
+    	if (this.hasClient_at(me)){
+    		this.getClient_at(me).backupFor.set(bfor, true);
     	}
-
-    	// Remove this node as a connection to its backups
-    	// Decrement the availability of its parents, and add them to available.
-
-    	// Remove this node as a parent of its children
-    	// Connect children to someone else.
-
-    	this.nodes.get(socket_id).children.forEach ((tf, child_id, map) => {
-    		this.getClient_at(child_id).parent = undefined;
-
-    		// NEW CONNECTION
-    	});
-
-    	// Remove it from this.nodes
-    	this.nodes.delete(socket_id);
+    	console.warn("Error:isbackupFor");
     }
 
     /*
@@ -206,9 +183,9 @@ class Graph {
     	return 0
     }
 
-    sort_availables(){}
+    getBackupConnections(id, depth, limit){
 
-    getBackupConnection(id, depth){
+    	if (limit == undefined) {limit = this.max_backup;}
 
     	var removeables = []
     	var iterator = this.connections_available[Symbol.iterator]();
@@ -231,7 +208,7 @@ class Graph {
 					
 	 					if (this.getClient_at(socket_id[0]).connections >= this.max_connections){ removeables.push(socket_id[0]); }
 
-	 					if (backup_nodes.length == this.max_backup){
+	 					if (backup_nodes.length == this.max_backup || backup_nodes.length == limit){
 	 						break;
 	 					}			
 
@@ -255,6 +232,75 @@ class Graph {
  		}
 
  		return backup_nodes;
+    }
+
+    /*
+		Removes a Client when it disconnects.
+		Handles following cases:
+			1. Remove from connections_available.
+			2. Remove as a child of its parent
+			3. Remove as connection for its backups
+			4. Remove as a backup for other clients
+			5. Remove as a parent of its children
+    */
+
+    removeClient_at(socket_id){
+    	
+    	// Remove from availble nodes
+    	this.connections_available.delete(socket_id);
+
+    	// Remove this node as a child of its parent.
+    	// Decrement the availability of its parents, and add them to available.
+
+    	var myParent = this.nodes.get(socket_id).parent;
+    	
+    	if (myParent != undefined && this.hasClient_at(myParent)) {
+    		this.getClient_at(myParent).connections -= 1;
+	    	this.getClient_at(myParent).children.delete(socket_id);
+
+			if (this.getClient_at(myParent).connections < this.max_connections){
+				let d = this.depthOfNode(myParent);
+				this.addAvailableConnections(myParent, d);
+			}
+    	}
+
+    	// Remove this node as a connection to its backups
+    	// Decrement the availability of its backups, and add them to available.
+    	this.nodes.get(socket_id).backups.forEach ((tf, backup_id, map) => {
+    		
+    		if (this.hasClient_at(backup_id)) {
+    			this.getClient_at(backup_id).connections -= 1;
+	    		this.getClient_at(backup_id).children.delete(socket_id);
+
+	    		if (this.getClient_at(backup_id).connections < this.max_connections){
+	    			let d = this.depthOfNode(backup_id);
+					this.addAvailableConnections(backup_id, d);
+	    		}
+    		}
+    		
+    	});
+
+    	// Remove this node as a backup for others connections.
+    	this.nodes.get(socket_id).backupFor.forEach ((tf, backup_id, map) => {
+    		
+    		if (this.hasClient_at(backup_id)) {
+    			this.getClient_at(backup_id).backups.remove(socket_id);
+    		}
+    		
+    	});
+
+    	// Remove this node as a parent of its children
+    	// Connect children to someone else.
+
+    	this.nodes.get(socket_id).children.forEach ((tf, child_id, map) => {
+
+    		if (this.hasClient_at(child_id)) {
+    			this.getClient_at(child_id).parent = undefined;
+    		}
+    	});
+
+    	// Remove it from this.nodes
+    	this.nodes.delete(socket_id);
     }
 
     getAvailableConnection(){

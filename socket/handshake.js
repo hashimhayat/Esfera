@@ -6,22 +6,26 @@ module.exports = function (io) {
     // The clientGraph stores all the details about a client.
     const clientGraph = new Graph();
 
+
     io.on('connection', function(socket) {
 
+        // CONNECTION ESTABLISHED
         console.log(socket.id, "connected.")
-
         clientGraph.addClient_at(socket.id, socket);
-        clientGraph.connectionsAvailable();
-
-        // A Client disconnects.
+        
         socket.on('disconnect', function(){
+
+            // CLIENT DISCONNECTS
             console.log(socket.id,' disconnected');
 
             var parent = clientGraph.getParent(socket.id);
             var children = clientGraph.getChildren(socket.id);
+
+            // Remove the client from the graph.
             clientGraph.removeClient_at(socket.id);
 
-            // Telling all the children of the disconnected client, that their parent has died.
+            // Inform all the children of the disconnected client, that their parent has died.
+            // This will triger them to refer to their backup connections.
             for (var c = 0; c < children.length; c++){
                 clientGraph.getClient_sock_at(children[c]).emit('signal', { desc : "parentdied", from : socket.id, to: children[c]});
             }
@@ -78,10 +82,9 @@ module.exports = function (io) {
                             // Add to availaibility list
                             console.log("Depth: ", depth);
                             clientGraph.addAvailableConnections(signal.from, depth);
-                            clientGraph.connectionsAvailable()
                             
                             // Backup Connections
-                            var backups = clientGraph.getBackupConnection(signal.from, depth);
+                            let backups = clientGraph.getBackupConnections(signal.from, depth, undefined);
 
                             for (var i = 0; i < backups.length; i++){
                                 clientGraph.getClient_sock_at(backups[i]).emit('signal', { desc : "backup", from : signal.from, to: backups[i]});
@@ -93,8 +96,31 @@ module.exports = function (io) {
                             clientGraph.writeLogs();
                             break;
 
+                        case "newparent":
+
+                            // Assign a client a new Parent that was one of its backup connections.
+                            clientGraph.assign_newParent(signal.from, signal.parent);
+                            clientGraph.remove_backup(signal.from, signal.parent);
+
+                            // Assign a new backup.
+                            let bkups = clientGraph.getBackupConnections(signal.from, clientGraph.depthOfNode(signal.from), 1);
+
+                            for (var i = 0; i < bkups.length; i++){
+                                clientGraph.getClient_sock_at(bkups[i]).emit('signal', { desc : "backup", from : signal.from, to: bkups[i]});
+                            }
+
+                            // Logging for Graph
+                            clientGraph.writeLogs();
+                            break;
+                        
+                        case "newbackup":
+
+                            console.log("New Backup: Client: ", signal.from, " Backup: ", signal.backup);
+                            clientGraph.setBackupFor(signal.from, signal.backup);
+
+                            break;
+
                         default:
-                            // statements_def
                             break;
                     }
 
