@@ -3,7 +3,7 @@
 <style>
 
 .links line {
-  stroke: #999;
+  /*stroke: #999;*/
   stroke-opacity: 0.6;
 }
 
@@ -12,8 +12,16 @@
   stroke-width: 1.5px;
 }
 
+.graph {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  /* bring your own prefixes */
+  transform: translate(-50%, -50%);
+}
+
 </style>
-<svg width="960" height="600"></svg>
+<svg class="graph" width="800" height="800"></svg>
 <script src="https://d3js.org/d3.v4.min.js"></script>
 <script>
 
@@ -36,7 +44,7 @@ d3.json("/data/data.json", function(error, graph) {
     .selectAll("line")
     .data(graph.links)
     .enter().append("line")
-      .attr("stroke-width", function(d) { return Math.sqrt(d.value); });
+      .attr("stroke", function(d) { return d.value; });
 
   var node = svg.append("g")
       .attr("class", "nodes")

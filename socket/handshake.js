@@ -16,7 +16,16 @@ module.exports = function (io) {
         // A Client disconnects.
         socket.on('disconnect', function(){
             console.log(socket.id,' disconnected');
+
+            var parent = clientGraph.getParent(socket.id);
+            var children = clientGraph.getChildren(socket.id);
             clientGraph.removeClient_at(socket.id);
+
+            // Telling all the children of the disconnected client, that their parent has died.
+            for (var c = 0; c < children.length; c++){
+                clientGraph.getClient_sock_at(children[c]).emit('signal', { desc : "parentdied", from : socket.id, to: children[c]});
+            }
+
             clientGraph.writeLogs();
         });
 
@@ -58,6 +67,8 @@ module.exports = function (io) {
                     switch (signal.type) {
                         
                         case "connected":
+
+                            console.log("Connection Established between: Parent: ", signal.with, " Child: ", signal.from);
                             
                             // A connection has been established between sender of this signal and another client.
                             clientGraph.connectionEstablished(signal.with, signal.from);
@@ -67,15 +78,16 @@ module.exports = function (io) {
                             // Add to availaibility list
                             console.log("Depth: ", depth);
                             clientGraph.addAvailableConnections(signal.from, depth);
+                            clientGraph.connectionsAvailable()
                             
                             // Backup Connections
-                            // var backups = clientGraph.getBackupConnection(socket.id, depth);
+                            var backups = clientGraph.getBackupConnection(signal.from, depth);
 
-                            // for (var i = 0; i < backups.length; i++){
-                            //     clientGraph.getClient_sock_at(signal.from).emit('signal', { desc : "request", from : socket.id, to: backups[i]});
-                            // }
+                            for (var i = 0; i < backups.length; i++){
+                                clientGraph.getClient_sock_at(backups[i]).emit('signal', { desc : "backup", from : signal.from, to: backups[i]});
+                            }
 
-                            //console.log("Backup: ", backups);
+                            console.log("Backup: ", backups);
 
                             // Logging for Graph
                             clientGraph.writeLogs();
@@ -95,15 +107,6 @@ module.exports = function (io) {
                         case "all":
                             
                             socket.broadcast.emit('signal', signal);
-                            break;
-                        
-                        case "broadcaster":
-                            
-                            // if (clientGraph.hasBroadcaster()){
-                            //     clientGraph.getBroadcaster_sock().emit('signal', { desc : "request", from : socket.id, to: "broadcaster"});
-                            // } else {
-                            //     clientGraph.getClient_sock_at(socket.id).emit('signal', { desc: "error", from : "server", to: socket.id , message: "Broadcaster not available."});
-                            // }
                             break;
 
                         default:

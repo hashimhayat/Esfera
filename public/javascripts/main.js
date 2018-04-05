@@ -67,14 +67,11 @@ function WRTCConnection(_config) {
 
 
 	self.connection.ontrack = function (evt) {
-		console.log(evt.streams);
         self.stream = evt.streams[0];
     };
 
     self.connection.onaddstream = function (evt) {
-		console.log(evt);
         self.stream = evt.stream;
-        console.log(self.stream.getTracks())
     };
 }
 
@@ -143,6 +140,22 @@ function Peer(config) {
 
 		if (self.broadcaster || self.stream)
 			self.connections[otherID].connection.addStream(self.stream.clone());
+	}
+
+	self.parentdied = function(parentID){
+		
+		self.streamAttached = false
+		delete self.connections[parentID];
+
+		for (var conn in self.connections) {
+	    	if (self.connections.hasOwnProperty(conn)) {
+	        	self.stream = self.connections[conn].getStream();
+		        self.viewStream("videoView");
+				self.streaming = true;
+	        	console.log("Stream set to:", conn);
+	        	break;
+	        }
+	    }
 	}
 
 	/*
@@ -216,9 +229,18 @@ function Peer(config) {
 	        	case "request":
 
 	        		// Request from a client to connect.
-	        		console.log(signal.from, " would like to connect.")
+	        		console.log(signal.from, " would like to connect.");
 	        		// Set up a new WebRTC connection.
                     self.createConnection(signal.from);
+	        		break;
+
+	        	case "backup":
+
+	        		// A client wants to join you as a backup connection.
+	        		console.log(signal.from, "sent a backup request");
+
+	        		// Set up a new WebRTC Backup connection.
+	        		self.createConnection(signal.from);
 	        		break;
 
 	        	case "offer":
@@ -252,26 +274,40 @@ function Peer(config) {
 	        		
 	        	case "connected":
 	        		
-	        		// This
 		        	console.log("Connection established with:", self.connections[signal.from].getOther());
+		        	console.log("My Connections: ", self.connections);
 
 		        	if (!self.streaming && self.connections[signal.from].getStream()){
 		        		self.stream = self.connections[signal.from].getStream();
 		        		self.viewStream("videoView");
 						self.streaming = true;
 
+						// Signaling my connected status.
 						let info_signal = { desc: "information", type: "connected", from : self.id, with: self.connections[signal.from].getOther(), to: "server" }
 						self.signalingChannel.emit('signal', info_signal);
 
+						// HTML content for DEBUG
 						document.getElementById("myid").innerHTML = self.id;
 						document.getElementById("connectedto").innerHTML = self.connections[signal.from].getOther();
 		        	}
 
 	        		break;	
 
-	        	case "close":
+	        	case "parentdied":
+	        		
+	        		// Signal received when your parent dies.
+	        		console.log(signal.from, " is dead.");
+	        		self.parentdied(signal.from);
 	        		break;
 	        	
+	        	case "childdied":
+
+	        		break;
+
+	        	case "backupdied":
+
+	        		break;
+
 	        	case "error":
 	        		console.log("Error: ", signal.desc.message);
 	        		break;

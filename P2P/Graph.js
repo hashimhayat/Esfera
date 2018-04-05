@@ -7,27 +7,42 @@ class Client {
 		this.socket = socket;
 		this.connections = 0;
 		this.children = new Map();
-		this.parents = new Map();
+		this.parent = undefined;
+		this.backups = new Map();
 		this.isBroadcaster = false;
 		this.depth = 0;
     }
 
     addParent(parent){
-    	this.parents.set(parent, true);
+    	this.parent = parent;
     }
 
     hasParent(){
-    	return (this.parents.size > 0 ? true : false);
+    	return (this.parent == undefined ? false : true);
     }
 
-    getFirstParent(){
-    	var itr = this.parents.keys();
-    	let p = itr.next().value;
-		return p;
+    isParent(node){
+    	return (this.parent == node ? true : false)
+    }
+
+    getParent(){
+    	return this.parent;
     }
 
     addChild(child){
     	this.children.set(child, true);
+    }
+
+    getChildren(){
+    	
+    	var res = [];
+    	var iterator = this.children[Symbol.iterator]();
+
+    	for (let socket_id of iterator) {
+    		res.push(socket_id[0]);
+    	}
+
+    	return res;
     }
 }
 
@@ -71,26 +86,54 @@ class Graph {
     	return this.nodes.has(socket_id);
     }
 
+    getParent(socket_id){
+    	if (this.nodes.has(socket_id) && this.nodes.get(socket_id).parent)
+    		return this.nodes.get(socket_id).parent;
+    	console.warn("Error:getParent");
+    }
+
+    getChildren(socket_id){
+    	var res = []
+    	
+    	if (this.nodes.has(socket_id) && this.nodes.get(socket_id).children.size >= 0){
+    		return this.nodes.get(socket_id).getChildren();
+    	}
+
+    	console.warn("Error:getParent");
+    }
+
+    /*
+		Removes a Client when it disconnects.
+    */
+
     removeClient_at(socket_id){
     	
     	// Remove from availble nodes
     	this.connections_available.delete(socket_id);
 
-    	// Remove this node as a child of its parents.
+    	// Remove this node as a child of its parent.
     	// Decrement the availability of its parents, and add them to available.
 
-    	this.nodes.get(socket_id).parents.forEach ((tf, parent_id, map) => {
-    		this.getClient_at(parent_id).children.delete(socket_id);
-    		this.getClient_at(parent_id).connections -= 1;
-    	});
+    	var myParent = this.nodes.get(socket_id).parent;
+    	
+    	if (myParent) {
+    		this.getClient_at(myParent).connections -= 1;
+	    	this.getClient_at(myParent).children.delete(socket_id);
 
+			if (this.getClient_at(myParent).connections < this.max_connections){
+				let d = this.depthOfNode(myParent);
+				this.addAvailableConnections(myParent, d);
+			}
+    	}
 
+    	// Remove this node as a connection to its backups
+    	// Decrement the availability of its parents, and add them to available.
 
     	// Remove this node as a parent of its children
     	// Connect children to someone else.
 
     	this.nodes.get(socket_id).children.forEach ((tf, child_id, map) => {
-    		this.getClient_at(child_id).parents.delete(socket_id);
+    		this.getClient_at(child_id).parent = undefined;
 
     		// NEW CONNECTION
     	});
@@ -157,17 +200,13 @@ class Graph {
     depthOfNode(socket_id){
 
     	if (this.nodes.has(socket_id) && this.getClient_at(socket_id).hasParent()){
-    		return 1 + this.depthOfNode(this.getClient_at(socket_id).getFirstParent())
+    		return 1 + this.depthOfNode(this.getClient_at(socket_id).getParent())
     	}
 
     	return 0
     }
 
-    sort_availables(){
-    	this.connections_available[Symbol.iterator] = function* () {
-    		yield* [...this.entries()].sort((a, b) => a[1] - b[1]);
-		}
-    }
+    sort_availables(){}
 
     getBackupConnection(id, depth){
 
@@ -179,30 +218,30 @@ class Graph {
 
 			var client = this.getClient_at(socket_id[0]);
 
-			if (client.depth <= depth) {
+			// If this is not me, or my original parent.
+			if (id != socket_id[0] && !this.getClient_at(id).isParent(socket_id[0])) {
 
-				if (client.connections < this.max_connections){
+				// Only if client is at a lower depth that me.
+				if (client.depth <= depth) {
 
-					if (id != socket_id[0]) {
-						
+					if (client.connections < this.max_connections){
+							
 						backup_nodes.push(socket_id[0]);
- 						this.getClient_at(socket_id[0]).connections += 1;
- 				
-	 					if (this.getClient_at(socket_id[0]).connections >= this.max_connections){
-	 						removeables.push(socket_id[0])
-	 					}
+						this.getClient_at(socket_id[0]).connections += 1;
+					
+	 					if (this.getClient_at(socket_id[0]).connections >= this.max_connections){ removeables.push(socket_id[0]); }
 
 	 					if (backup_nodes.length == this.max_backup){
 	 						break;
-	 					}
+	 					}			
+
+		 			} else {
+		 				removeables.push(socket_id[0])
 					}
 
-	 			} else {
-	 				removeables.push(socket_id[0])
+				} else {
+					break;
 				}
-
-			} else {
-				break;
 			}
 		}
 
@@ -210,45 +249,64 @@ class Graph {
    			this.connections_available.delete(removeables[i]);
  		}
 
+ 		// Add backups to the node
+ 		for (var i = 0; i < backup_nodes.length; i++){
+ 			this.getClient_at(id).backups.set(backup_nodes[i], true);
+ 		}
+
  		return backup_nodes;
     }
 
     getAvailableConnection(){
 
-    	var availableClient = undefined;
-    	var removeables = []
- 		
+    	var output = undefined;
+    	var res = [];
+    	var removeables = [];
     	var iterator = this.connections_available[Symbol.iterator]();
+    	var min_depth = Number.MAX_VALUE;
+    	var min_conns = Number.MAX_VALUE;
 
-    	// Find the node with the min connections in the current depth.
-    	// if all nodes occupied at the current depth, increment depth.
+    	// Find all nodes at the min depth
+    	for (let socket_id of iterator) {
 
-		for (let socket_id of iterator) {
+    		var client = this.getClient_at(socket_id[0]);
 
- 			var client = this.getClient_at(socket_id[0]);
+    		if (client.connections < this.max_connections){
 
- 			if (client.connections < this.max_connections){
- 				
- 				this.getClient_at(socket_id[0]).connections += 1;
+    			if (client.depth <= min_depth){
+    				min_depth = client.depth;
+    				res.push(socket_id[0]);
+    			} 
 
- 				if (this.getClient_at(socket_id[0]).connections >= this.max_connections){
- 					removeables.push(socket_id[0])
- 				}
+    		} else {
+    			removeables.push(socket_id[0]);
+    		}
+    	}
 
- 				availableClient = socket_id[0];
- 				break;
- 			} else {
- 				removeables.push(socket_id[0])
- 			}
- 		}
+    	// Find the node with min number of connections
+    	for (var i = 0; i < res.length; i++){
 
- 		for (var i = 0; i < removeables.length; i++){
+    		var client = this.getClient_at(res[i]);
+
+    		if (client.connections < min_conns){
+    			min_conns = client.connections;
+    			output = res[i]
+    		}
+    	}
+
+    	// Update the connections of the choosen node.
+    	this.getClient_at(output).connections += 1;
+
+    	if (this.getClient_at(output).connections >= this.max_connections){
+    		removeables.push(output);
+    	}
+
+    	for (var i = 0; i < removeables.length; i++){
    			this.connections_available.delete(removeables[i]);
  		}
 
-   		if (availableClient != undefined)
-   			return availableClient;
-    }	
+ 		return output;
+    }
 
     getNodes(){
 
@@ -275,7 +333,14 @@ class Graph {
 			let itrchildren = socket_id[1].children;
 
 			for (let child_id of itrchildren) {
-				let e = {source: socket_id[0], target: child_id[0], value: 1 }
+				let e = {source: socket_id[0], target: child_id[0], value: 'black'};
+				edges.push(e);
+			}
+
+			let itrbackup = socket_id[1].backups;
+
+			for (let backup_id of itrbackup) {
+				let e = {source: socket_id[0], target: backup_id[0], value: 'green'};
 				edges.push(e);
 			}
 		}
