@@ -6,6 +6,7 @@ function Performance() {
 	var self = this;
 	self.health = 0;
 	self.bandwidthUsage = 0;
+	self.performance = 0;
 }
 
 function Status() {
@@ -302,7 +303,9 @@ function Peer(config) {
 						document.getElementById("connectedto").innerHTML = self.connections[signal.from].getOther();
 		        	}
 
-		        	if (self.connections[signal.from].isBackup()){
+		        	if (self.connections[signal.from].isbackup){
+		        		
+		        		self.connections[signal.from].isbackup = false;
 		        		let info_signal = { desc: "information", type: "newbackup", from : self.id, backup: self.connections[signal.from].getOther(), to: "server" }
 						self.signalingChannel.emit('signal', info_signal);
 		        	}
@@ -368,26 +371,5 @@ function main(){
 	peer.createStream(500, 500, "videoView");
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
