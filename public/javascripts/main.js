@@ -54,17 +54,22 @@ function WRTCConnection(_config) {
 	  }
 	};
 
-    self.connection.onnegotiationneeded = () => {
+	self.sendOffer = function(){
 
-        self.connection.createOffer()
+		self.connection.createOffer()
         .then( function (offer) {
             return self.connection.setLocalDescription(offer);
         })
         .then( function() {
             console.log("Sending Offer")
-            self.signalingChannel.emit('signal', { desc: 'forward', forwardType: "offer", from: self.id, to: self.otherPeer, message: self.connection.localDescription });
+            let forward_type = "offer";
+            self.signalingChannel.emit('signal', { desc: 'forward', forwardType: forward_type, from: self.id, to: self.otherPeer, message: self.connection.localDescription });
         })
         .catch(logError);
+	}
+
+    self.connection.onnegotiationneeded = () => {
+    	self.sendOffer();
     }
 
 
@@ -88,8 +93,21 @@ function Peer(config) {
 	// States
 	self.streaming = false;
 	
+	/*
+		This is an object containing all the webRTC connections including:
+		1. My parent who is sending me the stream.
+		2. My backup connections, who may or may not send me a stream.
+	*/
+
 	self.connections = {};
-	self.depth;
+
+	/*
+		Backup Modes
+		1. Open a WebRTC Connection with MediaStream with a Backup.
+		DEFAULT. Store Backup Peer Locally: Do not open a connection, until required. 
+	*/
+
+	self.backup_mode = 'DEFAULT';
 
 	// Socket Channel and Socket ID
 	self.signalingChannel = io();
@@ -99,6 +117,7 @@ function Peer(config) {
 	self.aspectRatio = { width: 500, height: 500 };
 	self.streamAttached = false;
 	self.viewView;
+
 
 	/*
 		Once the a new peer connects to the server. It has two options depnding on its status:
@@ -143,31 +162,76 @@ function Peer(config) {
 			self.connections[otherID].connection.addStream(self.stream.clone());
 	}
 
-	self.createBackupConnection = function(otherID) {
+	/*
+		Initializing a Backup Connection: 
 
-		var config = { id: self.id, other: otherID, signalingChannel: self.signalingChannel }
-		var conn = new WRTCConnection(config);
-		self.connections[otherID] = conn;
-		self.connections[otherID].isbackup = true;
+		Backup Modes: 
+		1. Open a WebRTC Connection with MediaStream with a Backup.
+		DEFAULT. Store Backup Peer Locally: Do not open a connection, until required. 
+	*/
 
-		// The addStream function triggers the new WebRTC connection setup between the two clients.
-		self.connections[otherID].connection.addStream(self.stream.clone());
+	self.createBackupConnection = function(backups) {
+
+		for (var i = 0; i < backups.length; i++){
+			
+			let otherID = backups[i];
+
+			// Create a new Connection.
+			let config = { id: self.id, other: otherID, signalingChannel: self.signalingChannel }
+			let conn = new WRTCConnection(config);
+			self.connections[otherID] = conn;
+
+			// Mark it as a backup.
+			self.connections[otherID].isbackup = true;
+
+			switch (self.backup_mode) {
+				case 1:
+
+					//1. Open a WebRTC Connection containing a MediaStream with the Backup.
+					self.signalingChannel.emit('signal', { desc: 'forward', forwardType: "backuprequest", from: self.id, to: otherID });
+					break;
+				
+				default:
+					// By DEFAULT Store Backup Peer Locally: Do not open a connection, until required. 
+					break;
+			}
+		}
 	}
 
 	self.parentdied = function(parentID){
-		
+
 		self.streamAttached = false
 		delete self.connections[parentID];
 
-		for (var conn in self.connections) {
-	    	if (self.connections.hasOwnProperty(conn)) {
-	        	self.stream = self.connections[conn].getStream();
-		        self.viewStream("videoView");
-				self.streaming = true;
-	        	console.log("Stream set to:", conn);
-	        	return conn;
-	        }
-	    }
+		switch (self.backup_mode) {
+			
+			case 1:
+
+				// 1. Connect to another stream.
+				for (var conn in self.connections) {
+			    	if (self.connections.hasOwnProperty(conn)) {
+			        	self.stream = self.connections[conn].getStream();
+				        self.viewStream("videoView");
+						self.streaming = true;
+			        	console.log("Stream set to:", conn);
+			        	return conn;
+			        }
+			    }
+				
+				break;
+	
+			default:
+
+				// 2. Store Backup Peer Locally: Do not open a connection, until required. 
+				self.streaming = false;
+				for (var conn in self.connections) {
+			    	if (self.connections.hasOwnProperty(conn)) {
+			    		self.signalingChannel.emit('signal', { desc: 'forward', forwardType: "backuprequest", from: self.id, to: self.connections[conn].id });
+			        	return conn;
+			        }
+			    }
+				break;
+		}
 	}
 
 	/*
@@ -246,13 +310,19 @@ function Peer(config) {
                     self.createConnection(signal.from);
 	        		break;
 
-	        	case "backup":
+	        	case "backups":
 
-	        		// A client wants to join you as a backup connection.
-	        		console.log(signal.from, "sent a backup request");
+	        		// Receiving your backup connections from the server.
+	        		console.log("My backups are: ", signal.backups);
+	        		self.createBackupConnection(signal.backups);
 
-	        		// Set up a new WebRTC Backup connection.
-	        		self.createBackupConnection(signal.from);
+	        		break;
+
+	        	case "backuprequest":
+
+	        		// Some one wants you to be there backup.
+	        		console.log(signal.from, " sent a backup request.");
+	        		self.createConnection(signal.from);
 	        		break;
 
 	        	case "offer":
@@ -260,6 +330,7 @@ function Peer(config) {
 					// Set up a new WebRTC connection.
 					self.createConnection(signal.from);
 
+					// Sending Answer.
 					self.connections[signal.from].connection.setRemoteDescription(signal.message).then(function () {
 		            	console.log("Creating Answer")
 		                return self.connections[signal.from].connection.createAnswer();
@@ -275,7 +346,6 @@ function Peer(config) {
 	        	case "answer":
 	        		
 	        		console.log("Receiving Answer")
-
 		            self.connections[signal.from].connection.setRemoteDescription(signal.message).catch(logError);
 	        		break;
 

@@ -1,1 +1,1 @@
-{"nodes":[],"links":[]}
+{"nodes":[{"id":"WAdmjaziRQd881B6AAAA","group":0},{"id":"2INSbMO8CVSZIG7vAAAB","group":1},{"id":"hCyrSr-xQ9RogkbCAAAD","group":1},{"id":"h92HBy6esiYETkPwAAAE","group":2}],"links":[{"source":"WAdmjaziRQd881B6AAAA","target":"2INSbMO8CVSZIG7vAAAB","value":"black"},{"source":"WAdmjaziRQd881B6AAAA","target":"hCyrSr-xQ9RogkbCAAAD","value":"black"},{"source":"hCyrSr-xQ9RogkbCAAAD","target":"2INSbMO8CVSZIG7vAAAB","value":"green"},{"source":"h92HBy6esiYETkPwAAAE","target":"hCyrSr-xQ9RogkbCAAAD","value":"green"}]}

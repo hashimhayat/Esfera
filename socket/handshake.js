@@ -83,12 +83,9 @@ module.exports = function (io) {
                             console.log("Depth: ", depth);
                             clientGraph.addAvailableConnections(signal.from, depth);
                             
-                            // Backup Connections
+                            // Sending a list of my Backup Connections to myself.
                             let backups = clientGraph.getBackupConnections(signal.from, depth, undefined);
-
-                            for (var i = 0; i < backups.length; i++){
-                                clientGraph.getClient_sock_at(backups[i]).emit('signal', { desc : "backup", from : signal.from, to: backups[i]});
-                            }
+                            clientGraph.getClient_sock_at(signal.from).emit('signal', { desc : "backups", backups: backups, from : "server", to: "signal.from"});
 
                             console.log("Backup: ", backups);
 

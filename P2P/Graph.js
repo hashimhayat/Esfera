@@ -284,14 +284,13 @@ class Graph {
     	this.nodes.get(socket_id).backupFor.forEach ((tf, backup_id, map) => {
     		
     		if (this.hasClient_at(backup_id)) {
-    			this.getClient_at(backup_id).backups.remove(socket_id);
+    			this.getClient_at(backup_id).backups.delete(socket_id);
     		}
     		
     	});
 
     	// Remove this node as a parent of its children
     	// Connect children to someone else.
-
     	this.nodes.get(socket_id).children.forEach ((tf, child_id, map) => {
 
     		if (this.hasClient_at(child_id)) {
