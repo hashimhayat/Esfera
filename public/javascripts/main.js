@@ -1,6 +1,8 @@
 
 "use strict";
 
+var experiment = false;
+
 function Performance() {
 
 	var self = this;
@@ -29,9 +31,17 @@ function WRTCConnection(_config) {
 	self.dataChannel;
 	self.stream;
 	self.isbackup = false;
+	self.depth = 0;
+	
+	// Is sender or receiver
+	self.mode = "sender";
 
 	self.config = { "iceServers": [{ "url": "stun:stun.1.google.com:19302" }] }; 
 	self.connection = new RTCPeerConnection(self.config);
+
+	// EXPERIMENTATION
+	self.data = [{id: self.id, type: "receiver", sender: self.otherPeer, depth: self.depth}];
+	self.end_exp = false;
 
 	self.getOther = function(){
 		return self.otherPeer;
@@ -72,14 +82,48 @@ function WRTCConnection(_config) {
     	self.sendOffer();
     }
 
-
 	self.connection.ontrack = function (evt) {
         self.stream = evt.streams[0];
     };
 
     self.connection.onaddstream = function (evt) {
+    	self.mode = "receiver";
         self.stream = evt.stream;
     };
+
+    // EXPERIMENT
+
+    self.startStats = function(){
+    	self.data = [{id: self.id, type: "receiver", sender: self.otherPeer, depth: self.depth}];
+    	getStats(self.connection, self.logStats, 1000);
+    }
+
+    self.logStats = function(stats){
+
+    	if (!self.end_exp){
+	    	var obj = {};
+	    	var date = new Date();
+	    	obj.time = date.getTime();
+	    	obj.logs = stats.results[9];
+	    	console.log(stats);
+	    	self.data.push(obj);
+    	}
+    }
+
+    self.start_logs = function(){
+    	getStats(self.connection, self.logStats, 1000);
+    }
+
+    self.end_logs = function (){
+    	console.log("ENDING EXPERIEMENT")
+    	document.getElementById("data").innerHTML = JSON.stringify(self.data);
+		let info_signal = { desc: "information", type: "logs", from : self.id, to: "server", data: self.data }
+		self.signalingChannel.emit('signal', info_signal);    	
+		self.end_exp = true;
+
+		// Close Window.
+		setTimeout(function(){ window.close(); }, 2000);
+    }
 }
 
 function Peer(config) {
@@ -87,7 +131,6 @@ function Peer(config) {
 	var self = this;
 	self.broadcaster = config.broadcaster;
 	self.MAX_CONNECTIONS = 5;
-	self.status = new Status();
 	self.performance = new Performance();
 
 	// States
@@ -117,6 +160,7 @@ function Peer(config) {
 	self.aspectRatio = { width: 500, height: 500 };
 	self.streamAttached = false;
 	self.viewView;
+	self.livestream = false;
 
 
 	/*
@@ -138,10 +182,11 @@ function Peer(config) {
 			sig = { desc: "broadcaster", from : self.id, to: "server", message: "I am the broadcaster." };
 		} else {
 			// Connection Request to the broadcaster
-			//sig = { desc: "forward", forwardType: "request", from : self.id, to : "broadcaster", message: "I would like to connect." };
 			sig = { desc: "moderator", from : self.id, to : "server", message: "I would like to connect." };
 		}
 		
+		var date = new Date();
+		self.startTime = date.getTime();
 		self.signalingChannel.emit('signal', sig);
 	});
 
@@ -245,25 +290,42 @@ function Peer(config) {
 		self.viewView = dom_ele;
 
 		if (self.broadcaster) {
-			
-			var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-			var constraints = { video: self.aspectRatio, audio: false };
-			
-			if (getUserMedia) {
-			    
-			    getUserMedia = getUserMedia.bind(navigator);
-				getUserMedia(constraints, 
+
+			var recordedVideo = document.getElementById('recorded');
+
+			if (self.livestream){
+				
+				var getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+				var constraints = { video: self.aspectRatio, audio: false };
+				
+				if (getUserMedia) {
 				    
-				    (stream) => {
-				    	self.stream = stream.clone();
-						self.viewStream(dom_ele);
-				    }, 
-				    (error) => {
-				    	
-				    }
-				)			
+				    getUserMedia = getUserMedia.bind(navigator);
+					getUserMedia(constraints, 
+					    
+					    (stream) => {
+					    	self.stream = stream.clone();
+							self.viewStream(dom_ele);
+					    }, 
+					    (error) => {
+					    	
+					    }
+					)			
+				}
+			} else {
+
+				var recordedVideo = document.getElementById('recorded');
+				recordedVideo.style.display = "none";
+
+				if (recordedVideo.captureStream) {
+					self.stream = recordedVideo.captureStream();
+					self.viewStream(dom_ele);
+			    	console.log(self.stream)
+			    }
 			}
-		}
+
+		} 
+				
 	}
 
 	self.viewStream = function(dom_ele){
@@ -283,6 +345,16 @@ function Peer(config) {
 
 		    video.play(); 
 		    self.streamAttached = true;
+
+		    // VERBOSE
+
+		    if (experiment){
+
+			    var date = new Date();
+			    let info_signal = { desc: "information", type: "start_time", from : self.id, to: "server", data: date.getTime() - self.startTime}
+				self.signalingChannel.emit('signal', info_signal);  
+			    setTimeout(function(){ window.open ("http://localhost:3000/",self.id); }, 2000);
+			}
 		}
 	}
 
@@ -364,6 +436,8 @@ function Peer(config) {
 		        		self.viewStream("videoView");
 						self.streaming = true;
 
+						self.connectedTO = signal.from;
+
 						// Signaling my connected status.
 						let info_signal = { desc: "information", type: "connected", from : self.id, with: self.connections[signal.from].getOther(), to: "server" }
 						self.signalingChannel.emit('signal', info_signal);
@@ -406,6 +480,21 @@ function Peer(config) {
 
 	        	case "error":
 	        		console.log("Error: ", signal.desc.message);
+	        		break;
+
+	        	case "start_logs":
+	        		
+	        		// EXPERIMENT
+	        		// Time: 60000 * n (mins)
+
+	        		console.log("STARTING EXPERIMENT")
+	        		self.connections[self.connectedTO].data[0].depth = signal.depth;
+	        		self.connections[self.connectedTO].start_logs();
+	        		setTimeout(self.connections[self.connectedTO].end_logs, 60000 * 2);
+	        		break;
+
+	        	case "close":
+	        		setTimeout(function(){ window.close(); }, 200);
 	        		break;
 
 	        	default:

@@ -1,4 +1,6 @@
 var jsonfile = require('jsonfile')
+var jsonexport = require('jsonexport');
+var fs = require('fs');
 
 class Client {
 
@@ -53,7 +55,7 @@ class Graph {
 		this.nodes = new Map();
 		this.connections_available = new Map();		// {socket id: depth}
 		this.broadcaster = undefined;
-		this.max_connections = 3;
+		this.max_connections = 2;
 		this.max_backup = 1;
     }
 
@@ -403,6 +405,22 @@ class Graph {
 		});
     }
 
+    write_exp_data(data){
+
+        var dir = "/Users/hashimhayat/Desktop/Capstone_Exp/";
+        var file = dir + data[0].depth + '-' + data[0].type + '-' +  data[0].id + '-' + data[0].sender + '.csv';
+        
+        jsonexport(data, function(err, csv){
+            if(err) return console.log(err);
+            
+            fs.writeFile(file, csv, function(err) {
+                if(err) {
+                    return console.log(err);
+                }
+                console.log("The file was saved!");
+            }); 
+        });
+    }
 }
 
 module.exports = {

@@ -6,6 +6,13 @@ module.exports = function (io) {
     // The clientGraph stores all the details about a client.
     const clientGraph = new Graph();
 
+    // EXPERIMENT
+    var experiment = false;
+    var receivers = [];
+    var TOPOLOGY = 14;
+
+    var sum_time = 0;
+    var cnt_time = 0;
 
     io.on('connection', function(socket) {
 
@@ -82,15 +89,55 @@ module.exports = function (io) {
                             // Add to availaibility list
                             console.log("Depth: ", depth);
                             clientGraph.addAvailableConnections(signal.from, depth);
+
+                            // EXPERIMENT
+                            if (experiment){
+                                receivers.push(signal.from);
+
+                                if (receivers.length == TOPOLOGY){
+
+                                    console.log("EXPERIMENT STARTED")
+                                    for (var i = 0; i < receivers.length; i++){
+                                        let depth = clientGraph.depthOfNode(receivers[i]);
+                                        clientGraph.getClient_sock_at(receivers[i]).emit('signal', { desc : "start_logs", depth: depth, from : socket.id, to: receivers[i]});
+                                    }
+
+                                }
+
+                                if (receivers.length > TOPOLOGY){
+                                    clientGraph.getClient_sock_at(receivers[receivers.length - 1]).emit('signal', { desc : "close", depth: depth, from : socket.id, to: receivers[i]});
+                                }
+                            }
+                     
                             
                             // Sending a list of my Backup Connections to myself.
+
+                            /*
                             let backups = clientGraph.getBackupConnections(signal.from, depth, undefined);
                             clientGraph.getClient_sock_at(signal.from).emit('signal', { desc : "backups", backups: backups, from : "server", to: "signal.from"});
-
                             console.log("Backup: ", backups);
+                            */
 
                             // Logging for Graph
                             clientGraph.writeLogs();
+                            break;
+
+                        case "logs":
+
+                            clientGraph.write_exp_data(signal.data);
+                            receivers.pop();
+
+                            if (receivers.length == 0){
+                                console.log("EXPERIMENT FINISHED")
+                            }
+                            break;
+
+                        case "start_time":
+
+                            sum_time += signal.data;
+                            cnt_time += 1;
+
+                            console.log("Average Time: ", sum_time/cnt_time);
                             break;
 
                         case "newparent":
@@ -152,3 +199,5 @@ module.exports = function (io) {
 
     });
 }
+
+
