@@ -315,7 +315,6 @@ function Peer(config) {
 			} else {
 
 				var recordedVideo = document.getElementById('recorded');
-				recordedVideo.style.display = "none";
 
 				if (recordedVideo.captureStream) {
 					self.stream = recordedVideo.captureStream();
@@ -518,6 +517,9 @@ function logError(error) {
 document.addEventListener('DOMContentLoaded', main);
 
 function main(){
+
+	var recordedVideo = document.getElementById('recorded');
+	recordedVideo.style.display = "none";
 
 	var peer;
 	var isbroadcaster = false;
