@@ -160,7 +160,7 @@ function Peer(config) {
 	self.aspectRatio = { width: 500, height: 500 };
 	self.streamAttached = false;
 	self.viewView;
-	self.livestream = false;
+	self.livestream = true;
 
 
 	/*
