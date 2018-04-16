@@ -6,13 +6,15 @@ module.exports = function (io) {
     // The clientGraph stores all the details about a client.
     const clientGraph = new Graph();
 
-    // EXPERIMENT
-    var experiment = false;
+    // ----- EXPERIMENT ------
+    var take_logs = false;      // Log taking for graph
+    var experiment = false;     // Operating in experiement mode
     var receivers = [];
     var TOPOLOGY = 14;
 
     var sum_time = 0;
     var cnt_time = 0;
+    // -----------------------
 
     io.on('connection', function(socket) {
 
@@ -37,7 +39,8 @@ module.exports = function (io) {
                 clientGraph.getClient_sock_at(children[c]).emit('signal', { desc : "parentdied", from : socket.id, to: children[c]});
             }
 
-            clientGraph.writeLogs();
+            if (take_logs) {clientGraph.writeLogs();}
+            
         });
 
         // Receiver connects and ask for a handshake request
@@ -54,7 +57,8 @@ module.exports = function (io) {
 
                     var sig = { desc: "broadcaster", from : "server", to : "broadcaster", message: "Broadcaster Ready."};
                     clientGraph.getBroadcaster_sock().emit('signal', sig);
-                    clientGraph.writeLogs();
+                    
+                    if (take_logs) {clientGraph.writeLogs();}
                     
                     break;
 
@@ -119,7 +123,7 @@ module.exports = function (io) {
                             */
 
                             // Logging for Graph
-                            clientGraph.writeLogs();
+                            if (take_logs) {clientGraph.writeLogs();}
                             break;
 
                         case "logs":
@@ -154,7 +158,7 @@ module.exports = function (io) {
                             }
 
                             // Logging for Graph
-                            clientGraph.writeLogs();
+                            if (take_logs) {clientGraph.writeLogs();};
                             break;
                         
                         case "newbackup":

@@ -345,10 +345,8 @@ function Peer(config) {
 		    video.play(); 
 		    self.streamAttached = true;
 
-		    // VERBOSE
-
+		    // EXPERIMENT
 		    if (experiment){
-
 			    var date = new Date();
 			    let info_signal = { desc: "information", type: "start_time", from : self.id, to: "server", data: date.getTime() - self.startTime}
 				self.signalingChannel.emit('signal', info_signal);  
