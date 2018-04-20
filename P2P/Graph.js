@@ -55,7 +55,7 @@ class Graph {
 		this.nodes = new Map();
 		this.connections_available = new Map();		// {socket id: depth}
 		this.broadcaster = undefined;
-		this.max_connections = 2;
+		this.max_connections = 5;
 		this.max_backup = 1;
     }
 
