@@ -66,6 +66,12 @@ module.exports = function (io) {
                     var sig = { desc: "broadcaster", from : "server", to : "broadcaster", message: "Broadcaster Ready."};
                     clientGraph.getBroadcaster_sock().emit('signal', sig);
                     
+
+                    // EXPERIEMENT
+                    measure = {};
+                    receivers = [];
+                    logs_recv = [];
+                    
                     if (take_logs) {clientGraph.writeLogs();}
                     
                     break;
