@@ -40,7 +40,7 @@ function WRTCConnection(_config) {
 	self.connection = new RTCPeerConnection(self.config);
 
 	// EXPERIMENTATION
-	self.data = [{id: self.id, type: "receiver", sender: self.otherPeer, depth: self.depth}];
+	self.data = [];
 	self.end_exp = false;
 
 	self.getOther = function(){
@@ -101,12 +101,7 @@ function WRTCConnection(_config) {
     self.logStats = function(stats){
 
     	if (!self.end_exp){
-	    	var obj = {};
-	    	var date = new Date();
-	    	obj.time = date.getTime();
-	    	obj.logs = stats.results[9];
-	    	console.log(stats);
-	    	self.data.push(obj);
+	    	self.data.push(stats.results[9]);
     	}
     }
 
@@ -116,13 +111,42 @@ function WRTCConnection(_config) {
 
     self.end_logs = function (){
     	console.log("ENDING EXPERIEMENT")
-    	document.getElementById("data").innerHTML = JSON.stringify(self.data);
-		let info_signal = { desc: "information", type: "logs", from : self.id, to: "server", data: self.data }
+
+    	var avgObject = {};
+    	// Find the Average
+
+    	var jitter = 0;
+    	var interframe = 0;
+    	var width = 0;
+    	var height = 0;
+    	var frameRate = 0;
+    	var currDelay = 0;
+
+    	for (var i = 0; i < self.data.length; i++){
+    		jitter += parseFloat(self.data[i].googJitterBufferMs);
+	    	interframe += parseFloat(self.data[i].googInterframeDelayMax);
+	    	width += parseFloat(self.data[i].googFrameWidthReceived);
+	    	height += parseFloat(self.data[i].googFrameHeightReceived);
+	    	frameRate += parseFloat(self.data[i].googFrameRateReceived);
+	    	currDelay += parseFloat(self.data[i].googCurrentDelayMs);
+    	}
+
+    	var total = self.data.length;
+    	var output = {
+    		jitter : (jitter / total).toFixed(2),
+    		interframe : (interframe / total).toFixed(2),
+    		width : (width / total).toFixed(2),
+    		height : (height / total).toFixed(2),
+    		frameRate : (frameRate / total).toFixed(2),
+    		currDelay : (currDelay / total).toFixed(2)
+    	};
+
+		let info_signal = { desc: "information", type: "logs", from : self.id, to: "server", data: output }
 		self.signalingChannel.emit('signal', info_signal);    	
 		self.end_exp = true;
 
 		// Close Window.
-		setTimeout(function(){ window.close(); }, 2000);
+		//setTimeout(function(){ window.close(); }, 2000);
     }
 }
 
@@ -135,6 +159,7 @@ function Peer(config) {
 
 	// States
 	self.streaming = false;
+	self.livestream = true;
 	
 	/*
 		This is an object containing all the webRTC connections including:
@@ -157,10 +182,10 @@ function Peer(config) {
 	self.id;
 
 	self.stream;
-	self.aspectRatio = { width: 500, height: 500 };
+	self.aspectRatio = { width: 1920, height: 1080 };	// 1080p
 	self.streamAttached = false;
 	self.viewView;
-	self.livestream = true;
+	
 
 
 	/*
@@ -284,14 +309,14 @@ function Peer(config) {
 		 (If the user is a broadcaster), otherwise it just displays the stream to the users DOM.
 	*/
 
-	self.createStream = function(height, width, dom_ele) {
+	self.createStream = function(width, height, dom_ele) {
 
 		self.aspectRatio = { width: width, height: height };
 		self.viewView = dom_ele;
 
-		if (self.broadcaster) {
+		var recordedVideo = document.getElementById('recorded');
 
-			var recordedVideo = document.getElementById('recorded');
+		if (self.broadcaster) {
 
 			if (self.livestream){
 				
@@ -312,15 +337,14 @@ function Peer(config) {
 					    }
 					)			
 				}
-			} else {
 
-				var recordedVideo = document.getElementById('recorded');
+			} else {
 
 				if (recordedVideo.captureStream) {
 					self.stream = recordedVideo.captureStream();
 					self.viewStream(dom_ele);
 			    	console.log(self.stream)
-			    }
+			    } 
 			}
 
 		} 
@@ -485,9 +509,13 @@ function Peer(config) {
 	        		// Time: 60000 * n (mins)
 
 	        		console.log("STARTING EXPERIMENT")
-	        		self.connections[self.connectedTO].data[0].depth = signal.depth;
 	        		self.connections[self.connectedTO].start_logs();
-	        		setTimeout(self.connections[self.connectedTO].end_logs, 60000 * 2);
+	        		setTimeout(self.connections[self.connectedTO].end_logs, 6000);
+	        		break;
+
+	        	case "show_log":
+
+	        		document.getElementById("data").innerHTML = JSON.stringify(signal.data);
 	        		break;
 
 	        	case "close":
@@ -516,8 +544,8 @@ document.addEventListener('DOMContentLoaded', main);
 
 function main(){
 
-	var recordedVideo = document.getElementById('recorded');
-	recordedVideo.style.display = "none";
+	//var recordedVideo = document.getElementById('recorded');
+	//recordedVideo.style.display = "none";
 
 	var peer;
 	var isbroadcaster = false;
@@ -527,7 +555,7 @@ function main(){
 	} 
 
 	peer = new Peer({broadcaster : isbroadcaster});
-	peer.createStream(500, 500, "videoView");
+	peer.createStream(1920, 1080, "videoView");
 
 }
 

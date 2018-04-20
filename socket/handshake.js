@@ -8,9 +8,11 @@ module.exports = function (io) {
 
     // ----- EXPERIMENT ------
     var take_logs = false;      // Log taking for graph
-    var experiment = false;     // Operating in experiement mode
+    var experiment = true;      // Operating in experiement mode
     var receivers = [];
-    var TOPOLOGY = 14;
+    var logs_recv = [];
+    var experiment_started = false;
+    var measure = {};
 
     var sum_time = 0;
     var cnt_time = 0;
@@ -40,6 +42,12 @@ module.exports = function (io) {
             }
 
             if (take_logs) {clientGraph.writeLogs();}
+
+            // EXPERIMENT
+            var index = receivers.indexOf(socket.id);
+            if (index > -1) {
+              receivers.splice(index, 1);
+            }
             
         });
 
@@ -96,21 +104,16 @@ module.exports = function (io) {
 
                             // EXPERIMENT
                             if (experiment){
+
+                                logs_recv = [];
                                 receivers.push(signal.from);
-
-                                if (receivers.length == TOPOLOGY){
-
-                                    console.log("EXPERIMENT STARTED")
-                                    for (var i = 0; i < receivers.length; i++){
-                                        let depth = clientGraph.depthOfNode(receivers[i]);
-                                        clientGraph.getClient_sock_at(receivers[i]).emit('signal', { desc : "start_logs", depth: depth, from : socket.id, to: receivers[i]});
-                                    }
-
+                                console.log("EXPERIMENT STARTED");
+                                    
+                                for (var i = 0; i < receivers.length; i++){
+                                    let depth = clientGraph.depthOfNode(receivers[i]);
+                                    clientGraph.getClient_sock_at(receivers[i]).emit('signal', { desc : "start_logs", depth: depth, from : socket.id, to: receivers[i]});
                                 }
 
-                                if (receivers.length > TOPOLOGY){
-                                    clientGraph.getClient_sock_at(receivers[receivers.length - 1]).emit('signal', { desc : "close", depth: depth, from : socket.id, to: receivers[i]});
-                                }
                             }
                      
                             
@@ -126,14 +129,48 @@ module.exports = function (io) {
                             if (take_logs) {clientGraph.writeLogs();}
                             break;
 
-                        case "logs":
+                        case "logs": 
 
-                            clientGraph.write_exp_data(signal.data);
-                            receivers.pop();
+                            var jitter = 0;
+                            var interframe = 0;
+                            var width = 0;
+                            var height = 0;
+                            var frameRate = 0;
+                            var currDelay = 0;
+                            
+                            logs_recv.push(signal.data);
 
-                            if (receivers.length == 0){
-                                console.log("EXPERIMENT FINISHED")
+                            if (logs_recv.length == receivers.length){
+
+                                for (let i = 0; i < logs_recv.length; i++){
+                                    jitter += parseFloat(logs_recv[i].jitter);
+                                    interframe += parseFloat(logs_recv[i].interframe);
+                                    width += parseFloat(logs_recv[i].width);
+                                    height += parseFloat(logs_recv[i].height);
+                                    frameRate += parseFloat(logs_recv[i].frameRate);
+                                    currDelay += parseFloat(logs_recv[i].currDelay);
+                                }
+
+                                console.log(jitter,interframe,frameRate);
+
+                                var total = logs_recv.length;
+                                var output = {
+                                    jitter : (jitter / total).toFixed(2),
+                                    interframe : (interframe / total).toFixed(2),
+                                    width : (width / total).toFixed(2),
+                                    height : (height / total).toFixed(2),
+                                    frameRate : (frameRate / total).toFixed(2),
+                                    currDelay : (currDelay / total).toFixed(2)
+                                };
+
+                                
+                                measure[total] = output;
+                                clientGraph.getClient_sock_at(receivers[receivers.length - 1]).emit('signal', { desc : "show_log", from : "server", data: measure});
+
+                                console.log(measure);
+                                console.log("EXPERIMENT FINISHED")  
                             }
+
                             break;
 
                         case "start_time":
